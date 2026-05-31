@@ -614,7 +614,7 @@ def main():
         all_qualifying.extend(qualifying)
 
     if len(libraries) > 1:
-        export_csv(all_qualifying, 'discover_books_results.csv')
+        export_combined_csv(all_qualifying, 'discover_books_results.csv')
 
 def export_csv(qualifying, filename):
     csv_path = os.path.join(SCRIPT_DIR, filename)
@@ -633,6 +633,53 @@ def export_csv(qualifying, filename):
                 b.get('duration', ''),
                 b.get('holds', 0),
                 b.get('wait_days', 0),
+            ])
+    print(f"  Results exported to {csv_path}")
+
+def export_combined_csv(qualifying, filename):
+    """Export combined results with one row per book and per-source columns."""
+    csv_path = os.path.join(SCRIPT_DIR, filename)
+
+    groups = {}
+    for book in qualifying:
+        norm = book.get('norm_title') or normalize_title(book['title'])
+        groups.setdefault(norm, []).append(book)
+
+    merged = []
+    for books in groups.values():
+        base = max(books, key=lambda b: b.get('gr_count') or 0)
+        row = {
+            'title': base['title'],
+            'author': base['author'],
+            'gr_rating': base.get('gr_rating', ''),
+            'gr_count': base.get('gr_count', ''),
+            'od_available': '', 'od_holds': '', 'od_wait_days': '',
+            'bb_available': '', 'bb_duration': '',
+        }
+        for book in books:
+            if book.get('source') == 'OverDrive':
+                row['od_available'] = 'Yes' if book['available'] else 'No'
+                row['od_holds'] = book.get('holds', 0)
+                row['od_wait_days'] = book.get('wait_days', 0)
+            elif book.get('source') == 'BorrowBox':
+                row['bb_available'] = 'Yes' if book['available'] else 'No'
+                row['bb_duration'] = book.get('duration', '')
+        merged.append(row)
+
+    merged.sort(key=lambda r: r.get('gr_rating') or 0, reverse=True)
+
+    with open(csv_path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            'Title', 'Author', 'Rating', 'Rating Count',
+            'OverDrive Available', 'OverDrive Holds', 'OverDrive Wait (days)',
+            'BorrowBox Available', 'BorrowBox Duration',
+        ])
+        for r in merged:
+            writer.writerow([
+                r['title'], r['author'], r['gr_rating'], r['gr_count'],
+                r['od_available'], r['od_holds'], r['od_wait_days'],
+                r['bb_available'], r['bb_duration'],
             ])
     print(f"  Results exported to {csv_path}")
 
