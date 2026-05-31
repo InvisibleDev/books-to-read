@@ -637,8 +637,20 @@ def export_csv(qualifying, filename):
     print(f"  Results exported to {csv_path}")
 
 def export_combined_csv(qualifying, filename):
-    """Export combined results with one row per book and per-source columns."""
+    """Export combined results with one row per book and per-source columns.
+    Preserves the user-maintained 'Interested' column from any existing file."""
     csv_path = os.path.join(SCRIPT_DIR, filename)
+
+    # Load existing Interested values keyed by normalized title
+    interested_map = {}
+    if os.path.exists(csv_path):
+        try:
+            with open(csv_path, newline='') as f:
+                for row in csv.DictReader(f):
+                    if 'Interested' in row and row.get('Title'):
+                        interested_map[normalize_title(row['Title'])] = row['Interested']
+        except (IOError, csv.Error):
+            pass
 
     groups = {}
     for book in qualifying:
@@ -648,11 +660,13 @@ def export_combined_csv(qualifying, filename):
     merged = []
     for books in groups.values():
         base = max(books, key=lambda b: b.get('gr_count') or 0)
+        norm = base.get('norm_title') or normalize_title(base['title'])
         row = {
             'title': base['title'],
             'author': base['author'],
             'gr_rating': base.get('gr_rating', ''),
             'gr_count': base.get('gr_count', ''),
+            'interested': interested_map.get(norm, ''),
             'od_available': '', 'od_holds': '', 'od_wait_days': '',
             'bb_available': '', 'bb_duration': '',
         }
@@ -671,13 +685,14 @@ def export_combined_csv(qualifying, filename):
     with open(csv_path, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow([
-            'Title', 'Author', 'Rating', 'Rating Count',
+            'Title', 'Author', 'Rating', 'Rating Count', 'Interested',
             'OverDrive Available', 'OverDrive Holds', 'OverDrive Wait (days)',
             'BorrowBox Available', 'BorrowBox Duration',
         ])
         for r in merged:
             writer.writerow([
                 r['title'], r['author'], r['gr_rating'], r['gr_count'],
+                r['interested'],
                 r['od_available'], r['od_holds'], r['od_wait_days'],
                 r['bb_available'], r['bb_duration'],
             ])
